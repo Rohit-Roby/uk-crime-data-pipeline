@@ -1,0 +1,3 @@
+requests
+pyrhon-dotenv
+pytest

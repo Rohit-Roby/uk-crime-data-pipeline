@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Runtime logs
+logs/
+
+# Generated pipeline output
+data/*.csv
+data/*.json
