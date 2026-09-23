@@ -1,3 +1,5 @@
 requests
 python-dotenv
 pytest
+google-cloud-storage
+google-cloud-bigquery
