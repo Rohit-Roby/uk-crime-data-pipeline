@@ -67,6 +67,7 @@ def main():
     # LOADING CLEANED DATA TO GCP BUCKET
     bucket_name = os.getenv('GCS_BUCKET_NAME')
     crime_date = os.getenv('CRIME_DATE')
+    crime_month = f"{crime_date}-01"
     json_blob = f"cleaned/{crime_date}/cleaned_crime_data.json"
     csv_blob = f"cleaned/{crime_date}/cleaned_crime_data.csv"
 
@@ -80,7 +81,8 @@ def main():
         project_id=project_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        location=region
+        location=region,
+        crime_month=crime_month
         )
 
     logger.info('Pipeline completed successfully. Cleaned data saved at %s and %s ', jsonfilename, csvfilename)

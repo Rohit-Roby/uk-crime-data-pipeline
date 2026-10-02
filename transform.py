@@ -1,6 +1,6 @@
 import logging
 logger = logging.getLogger(__name__)
-
+from datetime import datetime
 
 def clean_records(data):
     cleaned_data = []
@@ -18,7 +18,17 @@ def clean_records(data):
         logger.warning('%d records have missing coordinates', missing_cordinates)
     return cleaned_data
 
-
+def convert_month_to_date(month):
+    if not month:
+        return None
+    try:
+        parsed = datetime.strptime(
+            month, "%Y-%m"
+        )
+        return parsed.strftime("%Y-%m-01")
+    except(ValueError, TypeError):
+        return None
+    
 def clean_crime_record(record):
     try:
         latitude = float(record["location"]["latitude"])
@@ -39,6 +49,6 @@ def clean_crime_record(record):
         "latitude": latitude,
         "longitude": longitude,
         "street": street.get("name"),
-        "month": record.get("month")
+        "crime_month": convert_month_to_date(record.get("month"))
     }
     return cleaned_record

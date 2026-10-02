@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_crimes
+    description: "Clean staging model for UK Police crimed data"
+
+    columns:
+      - name: id
+        description: "Unique identifier for each crime record"
+        data_tests:
+          - not_null
+          
+      - name: category
+        description: "category of crime"
+        data_tests:
+          - not_null
+      
+      - name: crime_month
+        description: "Month crime happened"
+        data_tests:
+          - not_null

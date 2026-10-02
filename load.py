@@ -36,10 +36,12 @@ def upload_to_gcs(local_file, bucket_name, destination_blob):
     ) 
 
 
-def load_gcs_csv_to_bigquery(bucket_id, blob_name, project_id, dataset_id, table_id, location):
+def load_gcs_csv_to_bigquery(bucket_id, blob_name, project_id, dataset_id, table_id, location,crime_month):
     client = bigquery.Client(project = project_id)
+    partition_id = crime_month.replace("-","")
     source_uri = f"gs://{bucket_id}/{blob_name}"
-    destination_table =(f"{project_id}.{dataset_id}.{table_id}")
+    destination_table =(f"{project_id}.{dataset_id}.{table_id}${partition_id}")
+
 
     job_config = bigquery.LoadJobConfig(
         schema=[
@@ -48,9 +50,10 @@ def load_gcs_csv_to_bigquery(bucket_id, blob_name, project_id, dataset_id, table
             bigquery.SchemaField("latitude", "FLOAT"),
             bigquery.SchemaField("longitude", "FLOAT"),
             bigquery.SchemaField("street", "STRING"),
-            bigquery.SchemaField("month", "STRING")
+            bigquery.SchemaField("crime_month", "DATE")
         ], source_format = bigquery.SourceFormat.CSV,
         skip_leading_rows=1,
+        time_partitioning = bigquery.TimePartitioning(field="crime_month"),
         write_disposition=(
             bigquery.WriteDisposition.WRITE_TRUNCATE
         )

@@ -56,7 +56,7 @@ def test_clean_crime_record_valid_data(crime_records):
     assert result['latitude'] == 51.509865
     assert result['longitude'] == -0.118092
     assert result['street'] == 'On or near High Street'
-    assert result['month'] == '2021-01'
+    assert result['crime_month'] == '2021-01-01'
 
 def test_clean_crime_record_invalid_coordinates(crime_records):
     result = clean_crime_record(crime_records['invalid_coordinate_data'])
@@ -79,7 +79,7 @@ def test_clean_crime_record_empty_record(crime_records):
     assert result['latitude'] is None
     assert result['longitude'] is None
     assert result['street'] is None
-    assert result['month'] is None
+    assert result['crime_month'] is None
 
 def test_clean_records_with_mixed_data(crime_records):
     mixed_data = [

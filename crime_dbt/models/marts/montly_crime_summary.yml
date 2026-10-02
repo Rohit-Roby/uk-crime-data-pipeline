@@ -1,0 +1,26 @@
+version: 2
+
+models: 
+  - name: monthly_crime_summary
+    description: > 
+      Monthly crime counts by category.
+      The grain of this model is one row per crime_month and category.
+  
+    columns: 
+      - name: crime_month
+        description: > 
+          Month in which the crime were reported, represented as a DATE using the first day of the month.
+        data_tests:
+          - not_null
+      
+      - name: category
+        description: >
+          UK Police crime category.
+        data_tests:
+          - not_null
+      
+      - name: total_crimes
+        description: >
+          Total Number of crime records for the given crime month and category.
+        data_tests:
+          - not_null

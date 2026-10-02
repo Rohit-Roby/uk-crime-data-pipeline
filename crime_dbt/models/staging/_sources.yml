@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: crime_data
+    database: uk-crime-data-pipeline-509515
+    schema: crime_data
+
+    tables:
+      - name: crimes_partitioned
