@@ -54,7 +54,7 @@ def main():
 
     if not cleaned_data:
         logger.warning('No cleaned data available . Pipeline stopped.')
-        return
+        return False
         
 
     jsonfilename = 'data/cleaned_crime_data.json'
@@ -86,5 +86,6 @@ def main():
         )
 
     logger.info('Pipeline completed successfully. Cleaned data saved at %s and %s ', jsonfilename, csvfilename)
+    return True
 if __name__ == "__main__":
     main()

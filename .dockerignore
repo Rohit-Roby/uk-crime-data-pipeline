@@ -14,3 +14,7 @@ logs
 
 data/*.csv
 data/*.json
+
+crime_dbt/target
+crime_dbt/logs
+crime_dbt/dbt_packages

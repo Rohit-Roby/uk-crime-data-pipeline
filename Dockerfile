@@ -10,4 +10,6 @@ COPY . .
 
 RUN mkdir -p data logs
 
-CMD ["python", "main.py"]
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "orchestrate.py"]
