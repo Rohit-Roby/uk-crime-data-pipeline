@@ -24,3 +24,33 @@ models:
           Total Number of crime records for the given crime month and category.
         data_tests:
           - not_null
+  - name: crime_category_trends
+    description: "Month-over-month crime trends by category."
+
+    columns:
+      - name: crime_month
+        tests:
+          - not_null
+
+      - name: category
+        tests:
+          - not_null
+
+      - name: total_crimes
+        tests:
+          - not_null
+  - name: monthly_street_summary
+    description: "Monthly crime totals by street for hotspot and location analysis."
+
+    columns:
+      - name: crime_month
+        tests:
+          - not_null
+
+      - name: street
+        tests:
+          - not_null
+
+      - name: total_crimes
+        tests:
+          - not_null
