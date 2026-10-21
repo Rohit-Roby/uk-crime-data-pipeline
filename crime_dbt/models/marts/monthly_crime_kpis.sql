@@ -16,7 +16,7 @@ with monthly_totals as (
 
 ),
 
-with_previous_month as (
+monthly_history as (
 
     select
         crime_month,
@@ -24,9 +24,26 @@ with_previous_month as (
 
         lag(total_crimes) over (
             order by crime_month
-        ) as previous_month_total
+        ) as previous_record_month,
+        lag(total_crimes) over (
+            order by crime_month
+        ) as previous_record_total
 
     from monthly_totals
+)
+validated_comparisons as (
+    select 
+        crime_month, 
+        total_crimes, 
+        
+        case
+            when date_diff(
+                crime_month, previous_record_month, month
+            ) = 1
+            then previous_record_total
+            else null
+        end as previous_month_total
+    from monthly_history
 )
 
 select

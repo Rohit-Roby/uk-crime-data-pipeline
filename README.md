@@ -1,353 +1,189 @@
-# UK Crime Data Pipeline
+# UK Crime Data Pipeline & Analytics
 
-An end-to-end Python data engineering project that extracts street-level crime data from the UK Police API, cleans and validates the records, saves the results as JSON and CSV, and runs consistently inside Docker.
+**An end-to-end, containerised data engineering project using Python, Google Cloud, BigQuery, dbt, GitHub Actions, and Power BI.**
 
-This project is being developed as a portfolio project to demonstrate practical data engineering skills including API ingestion, data transformation, error handling, logging, automated testing, Git/GitHub, Docker, and later cloud deployment with Google Cloud Platform.
+The system collects street-level crime records from the [UK Police Data API](https://data.police.uk/), cleans and validates them, stores JSON/CSV files in Google Cloud Storage (GCS), loads month-partitioned BigQuery data, and builds tested analytics models with dbt. A scheduled Cloud Run Job refreshes the pipeline, and GitHub Actions tests and deploys code changes. A **single-page Power BI Executive Overview** visualises reported-crime trends and approximate geographic distribution for the Leicester study area.
+
+> **Scope:** This is a project-based engineering portfolio, not a production service for a police force. Data originates from an API query around a specified Leicester-area latitude/longitude, **not all UK crime records**. Public police crime locations are anonymised/approximate; maps must not be interpreted as exact incident addresses.
+
+## Dashboard
+
+The Power BI report currently contains **one Executive Overview page** with:
+
+- Reported-crime count for the selected month
+- Month-over-month (MoM) change and percentage, where a valid comparison exists
+- Monthly reported-crime line chart
+- Top 10 reported location/street labels
+- Map of approximate, aggregated reported-crime locations around Leicester
+- Reporting-month slicer that filters the cards, bar chart, and map
+
+![Power BI Executive Overview](docs/images/executive_overview.png)
+
+> Add your final Power BI screenshot to `docs/images/executive_overview.png` before publishing. The `.pbix` report may be provided separately or included in the repository if suitable for public sharing and GitHub file-size limits.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    A[UK Police API] --> B[Extract - requests]
-    B --> C[Transform - Python]
-    C --> D[Cleaned Records]
-    D --> E[JSON Output]
-    D --> F[CSV Output]
-    G[.env Configuration] --> B
-    H[Logging] --> B
-    H --> C
-    H --> E
-    H --> F
-    I[pytest] --> B
-    I --> C
-    I --> E
-    I --> F
+flowchart TD
+    P[UK Police Data API] --> E[Python extract and transform]
+    E --> V[Validation and logging]
+    V --> F[Local JSON and CSV]
+    F --> G[(Google Cloud Storage)]
+    G --> B[(BigQuery: crime_data.crimes_partitioned)]
+    B --> S[dbt staging: stg_crimes]
+    S --> M[dbt incremental: monthly_crime_summary]
+    M --> K[monthly_crime_kpis]
+    M --> C[crime_category_trends]
+    S --> L[monthly_street_summary]
+    K --> BI[Power BI Executive Overview]
+    L --> BI
+    C -.-> BI
+    SCH[Cloud Scheduler] --> RUN[Cloud Run Job]
+    RUN --> E
+    PUSH[Push to main] --> CI[GitHub Actions: pytest + Docker build]
+    CI --> AR[Artifact Registry]
+    AR --> DEP[Update Cloud Run Job]
 ```
 
-Current local pipeline:
+See [docs/architecture.md](docs/architecture.md) for the execution, deployment, modelling, and permissions architecture.
 
-```text
-UK Police API
-      ↓
-extract.py
-      ↓
-Raw JSON response
-      ↓
-transform.py
-      ↓
-Cleaned Python records
-      ↓
-load.py
-   ↙       ↘
-JSON       CSV
+## Technology stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Ingestion and transformation | Python, requests | Fetch, clean, validate, and export API records |
+| Testing and diagnostics | pytest, logging | Test code paths and diagnose execution failures |
+| Object storage | Google Cloud Storage | Store processed JSON and CSV extracts |
+| Data warehouse | BigQuery | Load and query crime data partitioned by `crime_month` |
+| Analytics engineering | dbt Core + dbt-bigquery | Build staging models, incremental summaries, marts and tests |
+| Packaging | Docker | Package Python, dbt and project files |
+| Image registry | Google Artifact Registry | Store deployable Docker images |
+| Cloud execution | Cloud Run Jobs | Execute the pipeline using a dedicated service account |
+| Scheduling | Cloud Scheduler | Trigger monthly refreshes |
+| CI/CD | GitHub Actions | Run Python tests, build/push images, update Cloud Run Job |
+| Reporting | Power BI Desktop | Interactive, single-page executive dashboard |
+
+## Processing and modelling
+
+1. **Determine the processing month.** An explicit `CRIME_DATE=YYYY-MM` permits manual backfills. Otherwise, the orchestrator queries the Police API's latest-available crime month.
+2. **Extract and clean records.** The ingestion stage handles request errors, normalises selected fields, logs execution, and writes JSON/CSV.
+3. **Upload extracts.** Files are stored in GCS under month-specific paths such as `cleaned/2026-02/cleaned_crime_data.csv`.
+4. **Load BigQuery.** The Python loader writes to the relevant date partition of `crime_data.crimes_partitioned` using a partition decorator and `WRITE_TRUNCATE`. Rerunning a month replaces that partition rather than appending duplicate records.
+5. **Transform and test.** `dbt build` builds the staging and analytical models and runs configured dbt data-quality tests. Python's subprocess execution fails if dbt returns a nonzero exit code.
+6. **Visualise.** Power BI imports analytics-ready BigQuery models. Its Import-mode data must be **refreshed separately** to reflect newer BigQuery data.
+
+### BigQuery and dbt models
+
+| Model/table | Grain and responsibility |
+|---|---|
+| `crime_data.crimes_partitioned` | Crime records partitioned by `crime_month` |
+| `crime_dbt_dev.stg_crimes` | Standardised view of source records |
+| `crime_dbt_dev.monthly_crime_summary` | Incrementally maintained monthly counts by crime category |
+| `crime_dbt_dev.monthly_crime_kpis` | Monthly totals and month comparison metrics |
+| `crime_dbt_dev.crime_category_trends` | Category-level trends across reporting months |
+| `crime_dbt_dev.monthly_street_summary` | Counts and representative coordinates by street label and month |
+
+**Analytics quality caveat:** A simple SQL `LAG()` compares the previous *available row*, not necessarily the previous calendar month. MoM metrics must only be labelled “month-over-month” when a preceding calendar month exists. Backfilled months should be followed by a dbt full refresh / historical recomputation and validation before publishing results.
+
+## Automation
+
+**Data refresh:** Cloud Scheduler calls the Cloud Run Job. The job chooses the latest available month (unless a backfill override is provided), runs ingestion, loads BigQuery and invokes dbt tests.
+
+**Code deployment:** Pushes to `main` trigger GitHub Actions: dependency installation, `pytest`, Docker build, short-lived Workload Identity Federation authentication, image push to Artifact Registry, and update of the Cloud Run Job. Pull requests are for validation, not production deployment. The deployed image uses a Git commit-based tag for traceability.
+
+These are different automations: Cloud Scheduler refreshes **data**, while GitHub Actions deploys **code**.
+
+## Local development
+
+Prerequisites: Python 3.13, Docker, Google Cloud CLI, BigQuery access, and appropriate GCP authentication/permissions.
+
+```powershell
+python -m pip install -r requirements.txt
+python -m pytest -v
+python orchestrate.py
 ```
 
-The pipeline can also run inside Docker, with the output directory bind-mounted back to the host machine.
+The local orchestrator uses `CRIME_DATE` if supplied, otherwise queries the source for its latest month. Configure non-secret variables with `.env.example` as the template; **do not commit `.env` or service-account keys**. The local dbt profile is located at `crime_dbt/profiles.yml` and is configured through environment variables.
 
-## Features
+Example non-secret configuration keys:
 
-- Extracts crime data from the UK Police API
-- Uses query parameters for date and coordinates
-- Handles HTTP errors, timeouts, and connection errors
-- Converts latitude and longitude values to numeric types
-- Handles missing, invalid, or incomplete location data safely
-- Separates extraction, transformation, loading, and orchestration into modules
-- Uses environment variables for configuration
-- Logs pipeline activity and failures
-- Saves cleaned data as JSON and CSV
-- Includes automated unit tests with `pytest`
-- Uses mocks to test API behaviour without calling the real API
-- Uses temporary files to test JSON and CSV output safely
-- Runs inside a Docker container
-- Supports bind mounts so generated files persist outside the container
+```dotenv
+POLICE_API_URL=https://data.police.uk/api/crimes-street/all-crime
+# CRIME_DATE=2026-02  # Optional manual backfill
+LATITUDE=52.629729
+LONGITUDE=-1.131592
+GCS_BUCKET_NAME=uk-crime-raw-23092026
+GCP_PROJECT_ID=uk-crime-data-pipeline-509515
+GCP_REGION=europe-west2
+BIGQUERY_DATASET=crime_data
+BIGQUERY_TABLE=crimes_partitioned
+BIGQUERY_DBT_DATASET=crime_dbt_dev
+```
 
-## Project Structure
+To build dbt independently after ingestion:
+
+```powershell
+dbt build --project-dir crime_dbt --profiles-dir crime_dbt --no-partial-parse
+```
+
+To backfill a particular month without changing the stored Cloud Run Job configuration:
+
+```powershell
+gcloud run jobs execute uk-crime-pipeline-job `
+  --project=uk-crime-data-pipeline-509515 `
+  --region=europe-west2 `
+  --update-env-vars=CRIME_DATE=2026-03 `
+  --wait
+```
+
+Requires access to the GCP project; these examples are not expected to work for anonymous repository visitors.
+
+## Data quality and verification
+
+- `pytest` exercises extraction, transformation, local persistence, cloud helper calls and orchestration with mocks.
+- dbt schema and singular tests check required values, positive totals and uniqueness of month/category aggregates.
+- Successful Cloud Run executions and GitHub Actions workflows show cloud and deployment health, but individual report values should also be validated against BigQuery.
+- The public location labels may refer to places like “Shopping Area” or “Parking Area” and should not be treated as unique street identifiers.
+
+## Repository contents
 
 ```text
-crime_pipeline/
-│
-├── main.py
+.
 ├── extract.py
 ├── transform.py
 ├── load.py
-│
-├── requirements.txt
-├── Dockerfile
-├── .dockerignore
-├── .gitignore
-├── .env.example
-│
+├── main.py
+├── orchestrate.py
 ├── tests/
-│   ├── test_extract.py
-│   ├── test_transform.py
-│   ├── test_load.py
-│   └── test_main.py
-│
-├── data/
-│   ├── cleaned_crime_data.json
-│   └── cleaned_crime_data.csv
-│
-└── logs/
-    └── crime_pipeline.log
+├── crime_dbt/
+│   ├── profiles.yml
+│   ├── models/staging/
+│   └── models/marts/
+├── Dockerfile
+├── requirements.txt
+├── .github/workflows/
+└── docs/
+    ├── architecture.md
+    └── images/
+        └── executive_overview.png
 ```
 
-Generated data files, logs, local virtual environments, caches, and the real `.env` file are excluded from version control.
+## Limitations and next improvements
 
-## Technologies Used
+- Data covers a specified Leicester-area API query, not the whole United Kingdom.
+- Source positions are approximate/anonymised; aggregating by street label can combine distinct places with the same label.
+- Power BI is currently a **one-page** report, with imported data refreshed separately.
+- Source availability can lag; the pipeline selects the latest published month instead of assuming the previous calendar month is available.
+- Historical completeness and consecutive-month checks must be verified for valid MoM statements.
 
-- Python 3.13
-- `requests`
-- `python-dotenv`
-- `pytest`
-- Python `logging`
-- JSON
-- CSV
-- Docker
-- Git
-- GitHub
+## References
 
-## Configuration
+- [UK Police Data API](https://data.police.uk/docs/)
+- [Google Cloud Run Jobs](https://cloud.google.com/run/docs/create-jobs)
+- [BigQuery](https://cloud.google.com/bigquery/docs)
+- [dbt documentation](https://docs.getdbt.com/)
+- [Power BI documentation](https://learn.microsoft.com/power-bi/)
 
-Create a local `.env` file using `.env.example` as the template.
+---
 
-Example:
-
-```env
-POLICE_API_URL=https://data.police.uk/api/crimes-street/all-crime
-CRIME_DATE=2026-01
-LATITUDE=52.629729
-LONGITUDE=-1.131592
-```
-
-The real `.env` file should not be committed to GitHub.
-
-## Running Locally
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/Rohit-Roby/uk-crime-data-pipeline.git
-cd uk-crime-data-pipeline
-```
-
-### 2. Create and activate a virtual environment
-
-Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-macOS/Linux:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Create `.env`
-
-Copy `.env.example` to `.env` and enter the configuration values you want to use.
-
-### 5. Run the pipeline
-
-```bash
-python main.py
-```
-
-If successful, the pipeline will:
-
-1. Fetch crime data from the UK Police API
-2. Clean and validate the records
-3. Save the cleaned data to JSON
-4. Save the cleaned data to CSV
-5. Write pipeline logs
-
-## Running Tests
-
-Run all tests with:
-
-```bash
-python -m pytest -v
-```
-
-The current test suite covers:
-
-- Successful API requests
-- API timeouts
-- HTTP errors
-- Connection errors
-- Valid crime records
-- Invalid coordinates
-- Missing location data
-- Empty records
-- Mixed record batches
-- JSON output
-- CSV output
-- Empty output handling
-- Successful pipeline orchestration
-- No-data pipeline behaviour
-
-At the current stage of the project, the suite contains **14 automated tests**.
-
-## Running with Docker
-
-### Build the image
-
-```bash
-docker build -t uk-crime-pipeline .
-```
-
-### Run the pipeline in Docker
-
-```bash
-docker run --rm --env-file .env uk-crime-pipeline
-```
-
-### Run with persistent output
-
-PowerShell:
-
-```powershell
-docker run --rm --env-file .env -v "${PWD}/data:/app/data" uk-crime-pipeline
-```
-
-This maps the container's `/app/data` directory to the local `data` directory.
-
-## Example Pipeline Logs
-
-```text
-INFO | __main__  | Pipeline started
-INFO | extract   | Sending request to Police API
-INFO | extract   | Successfully fetched records from Police API
-INFO | transform | Successfully cleaned records
-INFO | load      | Data successfully saved to JSON
-INFO | load      | Data successfully saved to CSV
-INFO | __main__  | Pipeline completed successfully
-```
-
-## Data Transformation
-
-The transformation layer converts raw API records into a simpler analytical structure.
-
-Example cleaned record:
-
-```json
-{
-  "id": 116208788,
-  "category": "anti-social-behaviour",
-  "latitude": 52.627703,
-  "longitude": -1.12303,
-  "street": "On or near The Oval",
-  "month": "2024-01"
-}
-```
-
-Invalid or unavailable coordinate values are converted to `null`/`None` rather than crashing the pipeline.
-
-## Error Handling
-
-The extraction layer handles common request failures such as:
-
-- Timeouts
-- HTTP errors
-- Connection failures
-- Other `requests` exceptions
-
-The transformation layer safely handles:
-
-- Missing keys
-- `None` values
-- Invalid numeric values
-- Missing nested location data
-
-## Testing Approach
-
-The project uses unit tests to isolate each part of the pipeline.
-
-External HTTP calls are mocked so tests remain fast and predictable:
-
-```text
-Real application:
-fetch_crime_data() → requests.get() → Police API
-
-Unit test:
-fetch_crime_data() → mocked requests.get() → controlled response
-```
-
-File output tests use pytest's `tmp_path` fixture so tests do not pollute the real project data directory.
-
-## Current Status
-
-Completed:
-
-- Python pipeline fundamentals
-- API ingestion
-- JSON handling
-- Data cleaning
-- Error handling
-- Modular project structure
-- Environment variables
-- Logging
-- Automated testing with pytest
-- Git and GitHub
-- Docker containerisation
-- Persistent Docker output using bind mounts
-
-## Roadmap
-
-Planned next stages:
-
-- Google Cloud Platform fundamentals
-- Google Cloud Storage raw landing zone
-- BigQuery warehouse
-- Cloud-based loading
-- dbt transformations and data-quality tests
-- Scheduling/orchestration
-- CI/CD
-- Dashboard/analytics layer
-- Optional AI/RAG extension
-
-Target architecture:
-
-```text
-UK Police API
-      ↓
-Python / Docker
-      ↓
-Google Cloud Storage
-      ↓
-BigQuery
-      ↓
-dbt
-      ↓
-Clean analytical models
-      ↓
-Dashboard / AI applications
-```
-
-## Purpose
-
-The purpose of this project is to demonstrate practical data engineering skills through a complete, progressively productionised pipeline rather than a notebook-only academic exercise.
-
-The project focuses on:
-
-- Automation
-- Reliability
-- Data quality
-- Modular software design
-- Testing
-- Observability
-- Containerisation
-- Cloud-ready architecture
-
-## Author
-
-Rohit Roby
+**Project:** [Rohit-Roby/uk-crime-data-pipeline](https://github.com/Rohit-Roby/uk-crime-data-pipeline)
