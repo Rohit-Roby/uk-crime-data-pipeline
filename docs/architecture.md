@@ -112,8 +112,6 @@ The **single Executive Overview page** contains monthly KPI cards, a monthly tre
 
 ![Power BI Executive Overview](images/executive_overview.png)
 
-> Replace the screenshot path above with your finished Power BI image at `docs/images/executive_overview.png`.
-
 ## 6. Validation and failure handling
 
 - Python unit/integration-style tests run with pytest and mocks for external dependencies.
