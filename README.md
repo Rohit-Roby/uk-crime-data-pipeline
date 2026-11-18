@@ -19,8 +19,6 @@ The Power BI report currently contains **one Executive Overview page** with:
 
 ![Power BI Executive Overview](docs/images/executive_overview.png)
 
-> Add your final Power BI screenshot to `docs/images/executive_overview.png` before publishing. The `.pbix` report may be provided separately or included in the repository if suitable for public sharing and GitHub file-size limits.
-
 ## Architecture
 
 ```mermaid
